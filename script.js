@@ -1,24 +1,29 @@
 if (process.env.NEW_RELIC_LICENSE_KEY) { require('newrelic') }
 
-var path    = require('path')
-var debug   = require('debug')('app:' + path.basename(__filename).replace('.js', ''))
-var op      = require('object-path')
+const path    = require('path')
+const debug   = require('debug')('app:' + path.basename(__filename).replace('.js', ''))
+const op      = require('object-path')
+const fs      = require('fs')
 
-var mysql   = require('mysql')
+const mysql   = require('mysql')
 const async = require('async')
 const Janitor = require('./janitor.js')
 
-APP_MYSQL_HOST     = process.env.MYSQL_HOST
-APP_MYSQL_PORT     = process.env.MYSQL_PORT
-APP_MYSQL_DATABASE = process.env.MYSQL_DATABASE
-APP_MYSQL_USER     = process.env.MYSQL_USER
-APP_MYSQL_PASSWORD = process.env.MYSQL_PASSWORD
+const APP_MYSQL_HOST     = process.env.MYSQL_HOST
+const APP_MYSQL_PORT     = process.env.MYSQL_PORT
+const APP_MYSQL_DATABASE = process.env.MYSQL_DATABASE
+const APP_MYSQL_USER     = process.env.MYSQL_USER
+const APP_MYSQL_PASSWORD = process.env.MYSQL_PASSWORD
 // APP_CUSTOMERGROUP  = process.env.CUSTOMERGROUP
-APP_CUSTOMERGROUP  = 1332
+const APP_CUSTOMERGROUP  = 1332
+
+
+const APP_ROOT_DIR = path.join(__dirname, '.')
+const APP_TIMESTAMP_DIR = path.join(APP_ROOT_DIR, 'timestamps')
+if (!fs.existsSync(APP_TIMESTAMP_DIR)) { fs.mkdirSync(APP_TIMESTAMP_DIR) }
 
 
 debug('creating connection...')
-
 var connection = mysql.createConnection({
   host     : APP_MYSQL_HOST,
   port     : APP_MYSQL_PORT,
@@ -36,7 +41,7 @@ connection.connect(function(err) {
     if (err) { throw err }
     async.eachOf(customers, function (customer, key, callback) {
       debug('Call for janitor: ', JSON.stringify(customer['database-name'], null, 4))
-      let janitor = new Janitor(customer, callback)
+      let janitor = new Janitor(customer, APP_TIMESTAMP_DIR, callback)
     }, function (err) {
       if (err) { debug(err) }
       debug('done')
