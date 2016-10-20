@@ -5,6 +5,7 @@ var fs      = require('fs')
 var moment  = require('moment')
 var op      = require('object-path')
 
+const async = require('async')
 const mysql = require('mysql')
 
 module.exports = function(customer, callback) {
@@ -21,18 +22,95 @@ module.exports = function(customer, callback) {
 
   debug('connecting to ' + customer['database-name'] + '...')
 
+
   connection.connect(function(err) {
     if (err) {
-      debug(err)
+      debug(err.message)
       return callback()
     }
+
+    // signal back and start monitoring and maintenance for database
     debug('connected to ' + customer['database-name'] + ' as id ' + connection.threadId)
+    callback()
+    async.until(
+      function() { return false },
+      function(callback) {
+        routine(connection, connection.config.database, function(err) {
+          if (err) { debug(err) }
+          setTimeout(function () {
+            callback()
+          }, 1e4)
+        })
+      }
+    )
+  })
+}
 
-    connection.end()
+let routine = function routine(connection, database_username, callback) {
+  debug('Routine for', connection.config.database, database_username)
 
-    debug('All clean at ' + customer['database-name'])
+  let timestamp = 3464400 // 2016-10-19 08:15:45
+  let timestamp_constraint = ' HAVING timestamp > ' + timestamp
+  let sort_direction = (timestamp ? 'ASC' : 'DESC')
+  let limit = 100
 
+  let changed_entities_sql = `
+    SELECT DISTINCT events.definition AS definition, events.id AS id, dates.action AS action, dates.timestamp AS timestamp
+    FROM (
+      SELECT DISTINCT 'created at'            AS action,
+                      Unix_timestamp(created) AS timestamp
+      FROM   entity
+      WHERE  is_deleted = 0
+             ` + timestamp_constraint + `
+      UNION ALL
+      SELECT DISTINCT 'changed at'            AS action,
+                      Unix_timestamp(changed) AS timestamp
+      FROM   entity
+      WHERE  is_deleted = 0
+             ` + timestamp_constraint + `
+      UNION ALL
+      SELECT DISTINCT 'deleted at'            AS action,
+                      Unix_timestamp(deleted) AS timestamp
+      FROM   entity
+      WHERE  is_deleted = 1
+             ` + timestamp_constraint + `
+      ORDER  BY timestamp ` + sort_direction + `
+      LIMIT ` + limit + `
+    ) AS dates
+    LEFT JOIN (
+      SELECT entity_definition_keyname AS definition,
+             id                        AS id,
+             'created at'              AS action,
+             Unix_timestamp(created)   AS timestamp
+      FROM   entity
+      WHERE  is_deleted = 0
+             ` + timestamp_constraint + `
+      UNION ALL
+      SELECT entity_definition_keyname AS definition,
+             id                        AS id,
+             'changed at'              AS action,
+             Unix_timestamp(changed)   AS timestamp
+      FROM   entity
+      WHERE  is_deleted = 0
+             ` + timestamp_constraint + `
+      UNION ALL
+      SELECT entity_definition_keyname AS definition,
+             id                        AS id,
+             'deleted at'              AS action,
+             Unix_timestamp(deleted)   AS timestamp
+      FROM   entity
+      WHERE  is_deleted = 1
+             ` + timestamp_constraint + `
+    ) AS events
+      ON events.timestamp = dates.timestamp
+     AND events.action = dates.action
+    ORDER BY dates.timestamp;`
+
+  connection.query(changed_entities_sql, function(err, rows, fields) {
+    if (err) { return callback(err) }
+    debug('Changes for ' + database_username + ' are ', JSON.stringify(rows.length, null, 4))
+    // connection.end()
+    debug('All clean at ' + database_username)
     return callback()
   })
-
 }

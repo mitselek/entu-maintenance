@@ -2,6 +2,7 @@ if (process.env.NEW_RELIC_LICENSE_KEY) { require('newrelic') }
 
 var path    = require('path')
 var debug   = require('debug')('app:' + path.basename(__filename).replace('.js', ''))
+var op      = require('object-path')
 
 var mysql   = require('mysql')
 const async = require('async')
@@ -12,7 +13,8 @@ APP_MYSQL_PORT     = process.env.MYSQL_PORT
 APP_MYSQL_DATABASE = process.env.MYSQL_DATABASE
 APP_MYSQL_USER     = process.env.MYSQL_USER
 APP_MYSQL_PASSWORD = process.env.MYSQL_PASSWORD
-APP_CUSTOMERGROUP  = process.env.CUSTOMERGROUP
+// APP_CUSTOMERGROUP  = process.env.CUSTOMERGROUP
+APP_CUSTOMERGROUP  = 1332
 
 
 debug('creating connection...')
@@ -32,13 +34,12 @@ connection.connect(function(err) {
 
   fetch_customers(function(err, customers) {
     if (err) { throw err }
-    async.eachOfSeries(customers, function (customer, key, callback) {
+    async.eachOf(customers, function (customer, key, callback) {
       debug('Call for janitor: ', JSON.stringify(customer['database-name'], null, 4))
       let janitor = new Janitor(customer, callback)
     }, function (err) {
       if (err) { debug(err) }
       debug('done')
-      // configs is now a map of JSON data
     })
   })
 
